@@ -14,3 +14,12 @@
 4. 최소 검증:
    - `cd android && gradle --no-daemon :app:processDebugResources`
 5. 커밋 후 다시 `git status`가 clean인지 확인
+
+## 빠른 해결 스크립트
+Android 스캐폴드 충돌 세트는 아래 스크립트로 현재 브랜치 기준(ours) 자동 정리할 수 있습니다.
+
+```bash
+./scripts/resolve_android_conflicts.sh
+```
+
+> 주의: 충돌 중인 상태에서만 동작하며, 실행 후 `git diff --staged`로 결과를 꼭 검토하세요.
