@@ -7,6 +7,8 @@ interface FileGateway {
 
     suspend fun write(path: String, data: ByteArray)
 
+    suspend fun delete(path: String)
+
     data class FileEntry(
         val name: String,
         val path: String,

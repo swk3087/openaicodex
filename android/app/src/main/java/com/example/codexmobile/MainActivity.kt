@@ -55,7 +55,7 @@ private fun SessionScreen(
     terminalOutput: List<TerminalSessionManager.TerminalOutputEvent>
 ) {
     val context = LocalContext.current
-    var hasAllFilesAccess by remember { mutableStateOf(StoragePermissionManager.hasAllFilesAccess()) }
+    var storageStatus by remember { mutableStateOf(StoragePermissionManager.currentStatus(context)) }
 
     Column(
         modifier = Modifier
@@ -70,21 +70,49 @@ private fun SessionScreen(
         Text(text = "Runtime: ${summary.runtimeVersion}")
         Text(text = "State: ${summary.state}")
         Text(text = "Runtime Error: ${summary.runtimeErrorCode.ifBlank { "-" }}")
-        Text(text = "Storage Access: ${if (hasAllFilesAccess) "ALL_FILES_GRANTED" else "ALL_FILES_REQUIRED"}")
-        if (!hasAllFilesAccess) {
+        Text(text = "Configured Storage Mode: ${storageStatus.configuredMode}")
+        Text(text = "Effective Workspace Mode: ${storageStatus.effectiveMode}")
+        if (storageStatus.isFallbackActive) {
+            Text(text = "Fallback active: running in app-private workspace because all-files permission is missing.")
+        }
+
+        Text(text = "--- Storage Settings ---")
+        Button(onClick = {
+            StoragePermissionManager.saveConfiguredStorageMode(
+                context,
+                StoragePermissionManager.StorageMode.APP_PRIVATE
+            )
+            storageStatus = StoragePermissionManager.currentStatus(context)
+        }) {
+            Text(text = "Use app-private mode (default)")
+        }
+        Button(onClick = {
+            StoragePermissionManager.saveConfiguredStorageMode(
+                context,
+                StoragePermissionManager.StorageMode.ALL_FILES
+            )
+            storageStatus = StoragePermissionManager.currentStatus(context)
+        }) {
+            Text(text = "Enable All files mode")
+        }
+        if (
+            StoragePermissionManager.supportsAllFilesPermissionFlow() &&
+            storageStatus.configuredMode == StoragePermissionManager.StorageMode.ALL_FILES &&
+            !storageStatus.hasAllFilesAccess
+        ) {
             Button(onClick = {
                 context.startActivity(StoragePermissionManager.createManageAllFilesAccessIntent(context))
-                hasAllFilesAccess = StoragePermissionManager.hasAllFilesAccess()
+                storageStatus = StoragePermissionManager.currentStatus(context)
             }) {
-                Text(text = "Grant all files access")
-            }
-        } else {
-            Button(onClick = {
-                hasAllFilesAccess = StoragePermissionManager.hasAllFilesAccess()
-            }) {
-                Text(text = "Refresh storage permission")
+                Text(text = "Open Android 11+ all-files access settings")
             }
         }
+        Button(onClick = {
+            storageStatus = StoragePermissionManager.currentStatus(context)
+        }) {
+            Text(text = "Refresh storage state")
+        }
+
         Text(text = "--- Terminal Stream ---")
         terminalOutput.takeLast(5).forEach { event ->
             Text(text = "[${event.source}] ${event.text}")
