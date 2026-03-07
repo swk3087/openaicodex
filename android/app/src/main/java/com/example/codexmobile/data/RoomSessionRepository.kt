@@ -5,8 +5,9 @@ import com.example.codexmobile.domain.SessionRepository
 import com.example.codexmobile.domain.SessionState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import javax.inject.Inject
 
-class RoomSessionRepository(
+class RoomSessionRepository @Inject constructor(
     private val sessionDao: SessionDao
 ) : SessionRepository {
     override fun observeSession(sessionId: String): Flow<Session> {
