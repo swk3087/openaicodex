@@ -33,7 +33,7 @@ class InitializeSessionRuntimeUseCase @Inject constructor(
                 selectedModel = "gpt-5.2-codex",
                 runtimeVersion = "-",
                 state = SessionState.IDLE,
-                workspaceUri = "/workspace",
+                workspacePath = "/workspace",
                 metadata = "runtimeErrorCode="
             )
         )

@@ -17,7 +17,7 @@ class RoomSessionRepository @Inject constructor(
                 selectedModel = entity.selectedModel,
                 runtimeVersion = entity.runtimeVersion,
                 state = SessionState.valueOf(entity.state),
-                workspaceUri = entity.workspaceUri,
+                workspacePath = entity.workspacePath,
                 metadata = entity.metadata
             )
         }
@@ -30,7 +30,7 @@ class RoomSessionRepository @Inject constructor(
                 selectedModel = session.selectedModel,
                 runtimeVersion = session.runtimeVersion,
                 state = session.state.name,
-                workspaceUri = session.workspaceUri,
+                workspacePath = session.workspacePath,
                 metadata = session.metadata
             )
         )
