@@ -194,6 +194,123 @@ blocked --closeSession--> closed
 
 - `blocked` 상태에서는 `execute` 재시도 금지(운영 정책에 따라 `openSession` 재호출로 초기화 가능).
 
+## 영속성 모델 (DB 엔티티)
+
+세션 관련 데이터는 반드시 `SessionEntity`를 루트로 하는 1:N 구조로 설계한다.
+
+### 엔티티 목록
+
+```ts
+interface SessionEntity {
+  id: string; // PK (= sessionId)
+  status: 'idle' | 'running' | 'closed' | 'blocked';
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SessionConfigEntity {
+  id: string;
+  sessionId: string; // FK -> SessionEntity.id
+  cwd: string;
+  allowlistVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SessionModelEntity {
+  id: string;
+  sessionId: string; // FK -> SessionEntity.id
+  model: string;
+  provider: string;
+  temperature: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PatchEntity {
+  id: string;
+  sessionId: string; // FK -> SessionEntity.id
+  commandId: string;
+  patchText: string;
+  applyStatus: 'pending' | 'applied' | 'rejected' | 'rolled_back';
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CommandHistoryEntity {
+  id: string;
+  sessionId: string; // FK -> SessionEntity.id
+  command: string;
+  accepted: boolean;
+  blockedReason?: string;
+  exitCode?: number;
+  createdAt: string;
+}
+```
+
+### 핵심 제약
+- `SessionConfigEntity`, `SessionModelEntity`, `PatchEntity`, `CommandHistoryEntity`는 모두 `sessionId` FK를 **필수(`NOT NULL`)**로 가진다.
+- FK는 모두 `REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE`로 선언한다.
+- `PatchEntity.commandId`는 세션 내 중복 방지를 위해 `(sessionId, commandId)` unique 인덱스를 권장한다.
+- 조회 성능을 위해 모든 하위 엔티티에 `INDEX(sessionId, createdAt)`를 둔다.
+
+### 세션 삭제(cascade) 정책
+- `SessionEntity` 삭제 시 하위 엔티티(`SessionConfigEntity`, `SessionModelEntity`, `PatchEntity`, `CommandHistoryEntity`)는 DB FK cascade로 즉시 제거한다.
+- 애플리케이션 레벨에서도 soft delete를 사용하지 않는 한, 별도 수동 정리 로직을 두지 않는다(이중 삭제 방지).
+- 단, 감사 규정으로 command 이력 장기 보관이 필요하면 cascade 대신 아카이빙 테이블로 이관 후 삭제하는 별도 배치 정책을 채택한다.
+
+## 리포지토리 계층 cross-session 접근 차단
+
+모든 하위 엔티티 저장소는 `sessionId`를 입력으로 강제하고, PK 단독 조회를 금지한다.
+
+```ts
+interface PatchRepository {
+  findById(sessionId: string, patchId: string): Promise<PatchEntity | null>;
+  listBySession(sessionId: string): Promise<PatchEntity[]>;
+  save(sessionId: string, patch: PatchEntity): Promise<void>;
+}
+```
+
+### 가드 규칙
+1. 저장소 메서드 시그니처에서 `sessionId`를 첫 번째 필수 인자로 받는다.
+2. SQL/ORM 조건절은 항상 `WHERE id = :id AND session_id = :sessionId` 형태를 강제한다.
+3. `affectedRows === 0`일 때는 "존재하지 않음"과 "타 세션 데이터"를 구분하지 않고 동일한 not-found 오류를 반환한다(정보 노출 차단).
+4. 서비스 계층은 컨텍스트의 활성 `sessionId`와 요청 파라미터의 `sessionId`가 다르면 즉시 `E_SESSION_SCOPE_MISMATCH`를 반환한다.
+
+## DB 버전업 및 마이그레이션 안정성 검증
+
+마이그레이션 테스트는 최소 아래 3단계 시나리오를 CI에서 고정 실행한다.
+
+1. **Fresh install 경로**
+   - 빈 DB에서 최신 스키마까지 일괄 마이그레이션.
+   - 모든 테이블/인덱스/FK 존재 여부와 `ON DELETE CASCADE` 설정을 검증.
+2. **N-1 -> N 업그레이드 경로**
+   - 직전 버전 스냅샷 DB를 준비하고 최신으로 마이그레이션.
+   - 기존 데이터 보존, 신규 nullable/default 컬럼 채움, FK 제약 충돌 여부를 검증.
+3. **회귀 안정성 경로**
+   - 업그레이드 후 세션 생성/명령 기록/패치 저장/세션 삭제를 실행.
+   - 세션 삭제 직후 하위 테이블 row count가 0인지 확인해 cascade 동작을 검증.
+
+### 테스트 예시(의사코드)
+
+```ts
+it('deletes child rows when a session is deleted', async () => {
+  const sessionId = 's1';
+  await insertSession(sessionId);
+  await insertSessionConfig(sessionId);
+  await insertSessionModel(sessionId);
+  await insertPatch(sessionId, 'cmd-1');
+  await insertCommandHistory(sessionId, 'pwd');
+
+  await deleteSession(sessionId);
+
+  expect(await count('session_config', sessionId)).toBe(0);
+  expect(await count('session_model', sessionId)).toBe(0);
+  expect(await count('patch', sessionId)).toBe(0);
+  expect(await count('command_history', sessionId)).toBe(0);
+});
+```
+
 ## 관측성/감사
 - 차단 이벤트: `sessionId`, `rawCommand`, `reason`, `timestamp` 필수 기록.
 - 실행 이벤트: `commandId`, `exitCode`, `durationMs`, `truncatedLogBytes` 기록.
