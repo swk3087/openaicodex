@@ -23,8 +23,6 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        buildConfigField("boolean", "FEATURE_RUNTIME_PERMISSION_EXPANSION", "false")
     }
 
     buildTypes {
@@ -42,7 +40,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
-        buildConfig = true
         compose = true
     }
     composeOptions {
