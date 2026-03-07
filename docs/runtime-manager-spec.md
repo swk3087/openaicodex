@@ -163,3 +163,100 @@ app start
 - `런타임 복구 중...`
 - `런타임 복구 완료. 작업을 계속할 수 있습니다.`
 - `런타임 복구 실패. 네트워크 상태를 확인하고 다시 시도해 주세요.`
+
+## 표준 상태 머신 정의
+
+런타임/세션 부트스트랩 상태는 아래 열거형으로 고정한다.
+
+```ts
+type RuntimeState =
+  | 'IDLE'
+  | 'PREPARING_RUNTIME'
+  | 'AUTH_REQUIRED'
+  | 'READY'
+  | 'RUNNING'
+  | 'PATCH_PENDING'
+  | 'FAILED';
+```
+
+### 상태 의미
+- `IDLE`: 초기 상태. 아직 런타임 준비/인증/실행을 시작하지 않은 상태.
+- `PREPARING_RUNTIME`: 런타임 다운로드/검증/복구를 수행 중인 상태.
+- `AUTH_REQUIRED`: API 키 만료, 로그인 만료 등으로 사용자 인증/재인증이 필요한 상태.
+- `READY`: 실행 가능한 정상 대기 상태(명령 시작 가능).
+- `RUNNING`: 명령 또는 작업이 현재 실행 중인 상태.
+- `PATCH_PENDING`: diff/patch가 생성되어 사용자 승인 또는 충돌 해결을 기다리는 상태.
+- `FAILED`: 자동 복구가 실패했거나, 즉시 사용자 개입이 필요한 치명 상태.
+
+### 권장 전이
+
+```text
+IDLE -> PREPARING_RUNTIME
+PREPARING_RUNTIME -> READY | AUTH_REQUIRED | FAILED
+AUTH_REQUIRED -> PREPARING_RUNTIME | READY | FAILED
+READY -> RUNNING | PATCH_PENDING
+RUNNING -> READY | PATCH_PENDING | FAILED
+PATCH_PENDING -> RUNNING | READY | FAILED
+FAILED -> PREPARING_RUNTIME
+```
+
+## 오류 코드 표준화
+
+오류 코드는 문자열 열거형으로 고정하고, UI/로깅/분석 전 구간에서 동일 값을 사용한다.
+
+```ts
+type RuntimeErrorCode =
+  | 'RUNTIME_BROKEN'
+  | 'AUTH_INVALID'
+  | 'MODEL_UNAVAILABLE'
+  | 'PATCH_CONFLICT'
+  | 'PERMISSION_DENIED';
+```
+
+### 코드별 의미/처리 가이드
+- `RUNTIME_BROKEN`: 런타임 파일 손상/누락/버전 불일치. 기본 액션은 `repairRuntime()`.
+- `AUTH_INVALID`: 토큰 만료/무효 API 키/권한 철회. 기본 액션은 재인증.
+- `MODEL_UNAVAILABLE`: 선택 모델이 비활성/쿼터 초과/배포 중단. 모델 재선택 또는 대체 모델 폴백.
+- `PATCH_CONFLICT`: patch 적용 충돌 발생. 충돌 뷰 제공 후 수동 머지 유도.
+- `PERMISSION_DENIED`: 파일/디렉터리/URI 접근 권한 거부. 권한 재요청 플로우로 이동.
+
+## 상태별 UI 액션 노출 규칙
+
+UI는 현재 상태에서 허용된 액션만 노출한다(비허용 액션은 숨김 또는 disabled 처리).
+
+| 상태 | 노출 액션(예시) | 비고 |
+|---|---|---|
+| `IDLE` | `prepare` | 최초 진입 액션만 노출 |
+| `PREPARING_RUNTIME` | `cancel`(선택) | 중복 실행/추가 입력 차단 |
+| `AUTH_REQUIRED` | `reauth` | 인증 완료 전 실행 버튼 숨김 |
+| `READY` | `run`, `change_model` | 정상 대기 상태 |
+| `RUNNING` | `stop` | 설정 변경/중복 실행 차단 |
+| `PATCH_PENDING` | `review_patch`, `apply_patch`, `reject_patch` | 승인 전 자동 적용 금지 |
+| `FAILED` | `repair` | 실패 상태에서는 복구 버튼만 기본 노출 |
+
+> 최소 규칙: `FAILED` 상태에서 `repair` 외 실행 액션은 노출하지 않는다.
+
+## stderr 파싱 및 사용자 친화 메시지 규칙
+
+stderr 원문을 그대로 노출하지 않고, 패턴 기반으로 표준 오류 코드 + 사용자 메시지로 변환한다.
+
+### 파싱 파이프라인
+1. stderr를 줄 단위로 정규화(트림, ANSI escape 제거).
+2. 규칙 테이블을 위에서 아래 순서로 매칭(첫 매치 우선).
+3. 매칭되면 `{ code, userMessage, rawSnippet }` 생성.
+4. 매칭 실패 시 `RUNTIME_BROKEN` + 일반 안내 문구로 폴백.
+
+### 규칙 테이블(초안)
+
+| stderr 패턴(정규식 예시) | 매핑 코드 | 사용자 메시지 |
+|---|---|---|
+| `/(invalid api key|unauthorized|token expired)/i` | `AUTH_INVALID` | `인증 정보가 유효하지 않습니다. 다시 로그인해 주세요.` |
+| `/(model .* not found|model unavailable|quota exceeded)/i` | `MODEL_UNAVAILABLE` | `요청한 모델을 사용할 수 없습니다. 다른 모델을 선택해 주세요.` |
+| `/(patch.*conflict|merge conflict|hunk failed)/i` | `PATCH_CONFLICT` | `코드 변경 적용 중 충돌이 발생했습니다. 변경 내용을 검토해 주세요.` |
+| `/(permission denied|eacces|operation not permitted)/i` | `PERMISSION_DENIED` | `파일 또는 리소스 접근 권한이 없습니다. 권한을 확인해 주세요.` |
+| `/(checksum mismatch|runtime missing|binary not found|exec format error)/i` | `RUNTIME_BROKEN` | `런타임이 손상되었거나 누락되었습니다. 복구를 시도해 주세요.` |
+
+### 구현 권장사항
+- 원문(stderr) 전체는 개발자 로그에만 저장하고, 사용자 UI에는 `userMessage` 중심으로 노출.
+- 동일 오류 반복 시(예: 30초 내 동일 코드 3회) 토스트 중복 노출을 억제.
+- 로깅 이벤트 스키마에 `state`, `code`, `matchedPatternId`, `commandId`를 포함해 장애 분석 가능성을 확보.
