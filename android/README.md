@@ -6,7 +6,8 @@
 - Compose 기반 `MainActivity`
 - Session/Runtime 도메인 타입
 - Room 기반 세션/패치 엔티티 초안
-- 명령 allowlist 기반 `CommandGate`
+- 프로파일 기반 allowlist + 강제 denylist `CommandGate`
+- 세션별 명령 프로파일 선택 및 실패 로그 수집
 
 ## 빌드
 ```bash

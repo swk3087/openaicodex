@@ -55,7 +55,7 @@ class SessionViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            terminalSessionManager.open(SESSION_ID)
+            terminalSessionManager.open(SESSION_ID, SESSION_COMMAND_PROFILE)
         }
     }
 
@@ -74,5 +74,6 @@ class SessionViewModel @Inject constructor(
     companion object {
         private const val SESSION_ID = "demo-session"
         private const val MAX_TERMINAL_EVENTS = 100
+        private const val SESSION_COMMAND_PROFILE = "ai-dev-safe"
     }
 }
