@@ -5,7 +5,7 @@ import javax.inject.Singleton
 
 @Singleton
 class CommandGate @Inject constructor(
-    private val allowedCommands: Set<String> = setOf("node", "npm", "npx codex")
+    private val allowedCommands: Set<String>
 ) {
     fun isAllowed(command: String): Boolean = validate(command) is CommandGateResult.Allowed
 
