@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.codexmobile.runtime.TerminalSessionManager
 import com.example.codexmobile.ui.session.SessionSummary
 import com.example.codexmobile.ui.session.SessionViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,12 +38,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HomeScreen(viewModel: SessionViewModel = hiltViewModel()) {
     val summary by viewModel.summary.collectAsStateWithLifecycle()
+    val terminalOutput by viewModel.terminalOutput.collectAsStateWithLifecycle()
 
-    SessionScreen(summary = summary)
+    SessionScreen(summary = summary, terminalOutput = terminalOutput)
 }
 
 @Composable
-private fun SessionScreen(summary: SessionSummary) {
+private fun SessionScreen(
+    summary: SessionSummary,
+    terminalOutput: List<TerminalSessionManager.TerminalOutputEvent>
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -56,5 +61,9 @@ private fun SessionScreen(summary: SessionSummary) {
         Text(text = "Runtime: ${summary.runtimeVersion}")
         Text(text = "State: ${summary.state}")
         Text(text = "Runtime Error: ${summary.runtimeErrorCode.ifBlank { "-" }}")
+        Text(text = "--- Terminal Stream ---")
+        terminalOutput.takeLast(5).forEach { event ->
+            Text(text = "[${event.source}] ${event.text}")
+        }
     }
 }
