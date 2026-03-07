@@ -187,6 +187,44 @@ app start
 - `런타임 복구 완료. 작업을 계속할 수 있습니다.`
 - `런타임 복구 실패. 네트워크 상태를 확인하고 다시 시도해 주세요.`
 
+## 운영 지표/릴리스 정책
+
+런타임 안정성 관리는 아래 핵심 지표와 배포/롤백 정책을 표준으로 사용한다.
+
+### 핵심 지표 정의
+- **런타임 준비 성공률**
+  - 정의: `prepareRuntime()`가 최종 `verifyRuntime()`까지 통과한 비율.
+  - 계산식: `runtime_prepare_success / runtime_prepare_total`.
+- **세션 시작 성공률**
+  - 정의: `openSession()` 호출 후 세션 상태가 `idle` 또는 `ready`로 정상 진입한 비율.
+  - 계산식: `session_start_success / session_start_total`.
+- **diff 적용 실패율**
+  - 정의: 사용자 승인 이후 실제 patch apply 단계에서 실패한 비율.
+  - 계산식: `diff_apply_failed / diff_apply_attempted`.
+- **평균 복구 시간(MTTR)**
+  - 정의: 장애 감지 시점부터 서비스 정상 상태(`READY`) 복귀까지 평균 소요 시간.
+  - 계산식: `sum(recovery_completed_at - failure_detected_at) / recovery_incident_count`.
+
+### 크래시 리포트 필수 태그
+- 런타임/세션 관련 크래시 리포트에는 아래 필드를 반드시 포함한다.
+  - `runtime.version`: 활성 런타임 버전(예: `18.20.8`).
+  - `session.version`: 세션 프로토콜/스키마 버전(예: `session-v2`).
+- 위 태그 누락 리포트는 운영 대시보드 집계에서 제외하지 말고 `tag_missing=true`로 별도 집계한다.
+
+### 런타임 버전 업데이트(staged rollout)
+- 런타임 버전 업데이트는 단일 전면 배포를 금지하고 아래 단계로 진행한다.
+  1. **10% 배포**: 핵심 지표(준비 성공률, 세션 시작 성공률, MTTR) 안정성 확인.
+  2. **30% 배포**: 에러 버짓과 크래시 트렌드가 임계치 이내인지 재확인.
+  3. **100% 배포**: 30% 단계가 안정적일 때만 전체 전환.
+- 각 단계 사이에는 최소 관측 윈도우(권장 24시간)를 확보한다.
+
+### 치명적 버그 즉시 롤백
+- 치명적 버그 감지 시, 원격 설정(remote config) 기반 롤백 플래그를 즉시 전환할 수 있어야 한다.
+- 필수 플래그 예시
+  - `runtime.rollout.enabled=false`: 신규 버전 확산 중단.
+  - `runtime.rollout.target_version=<previous_stable_version>`: 안정 버전 강제 전환.
+- 앱은 플래그 반영 주기(예: 앱 시작 시 + 실행 중 주기 폴링) 내 자동으로 이전 안정 버전으로 복귀해야 한다.
+
 ## 표준 상태 머신 정의
 
 런타임/세션 부트스트랩 상태는 아래 열거형으로 고정한다.
