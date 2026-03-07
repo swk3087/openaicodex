@@ -21,7 +21,8 @@ class SessionViewModel @Inject constructor(
                     sessionId = session.id,
                     selectedModel = session.selectedModel,
                     runtimeVersion = session.runtimeVersion,
-                    state = session.state.name
+                    state = session.state.name,
+                    runtimeErrorCode = session.metadata.removePrefix("runtimeErrorCode=")
                 )
             }
             .stateIn(
@@ -31,7 +32,8 @@ class SessionViewModel @Inject constructor(
                     sessionId = SESSION_ID,
                     selectedModel = "-",
                     runtimeVersion = "-",
-                    state = "IDLE"
+                    state = "IDLE",
+                    runtimeErrorCode = ""
                 )
             )
 

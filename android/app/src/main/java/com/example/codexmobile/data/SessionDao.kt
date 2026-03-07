@@ -19,4 +19,10 @@ interface SessionDao {
 
     @Query("UPDATE sessions SET state = :state WHERE id = :sessionId")
     suspend fun updateState(sessionId: String, state: String)
+
+    @Query("UPDATE sessions SET runtimeVersion = :runtimeVersion WHERE id = :sessionId")
+    suspend fun updateRuntimeVersion(sessionId: String, runtimeVersion: String)
+
+    @Query("UPDATE sessions SET metadata = :metadata WHERE id = :sessionId")
+    suspend fun updateMetadata(sessionId: String, metadata: String)
 }

@@ -55,5 +55,6 @@ private fun SessionScreen(summary: SessionSummary) {
         Text(text = "Model: ${summary.selectedModel}")
         Text(text = "Runtime: ${summary.runtimeVersion}")
         Text(text = "State: ${summary.state}")
+        Text(text = "Runtime Error: ${summary.runtimeErrorCode.ifBlank { "-" }}")
     }
 }
