@@ -3,6 +3,7 @@ package com.example.codexmobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.codexmobile.domain.SessionRepository
+import com.example.codexmobile.runtime.CommandGate
 import com.example.codexmobile.runtime.TerminalSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -18,6 +19,7 @@ class SessionViewModel @Inject constructor(
     sessionRepository: SessionRepository,
     private val terminalSessionManager: TerminalSessionManager
 ) : ViewModel() {
+    private var sessionCommandProfile: String = CommandGate.DEFAULT_PROFILE
     val summary: StateFlow<SessionSummary> =
         sessionRepository.observeSession(SESSION_ID)
             .map { session ->
@@ -52,10 +54,17 @@ class SessionViewModel @Inject constructor(
                 initialValue = emptyList()
             )
 
-
     init {
         viewModelScope.launch {
-            terminalSessionManager.open(SESSION_ID, SESSION_COMMAND_PROFILE)
+            terminalSessionManager.open(SESSION_ID, sessionCommandProfile)
+        }
+    }
+
+    fun selectCommandProfile(profileId: String) {
+        viewModelScope.launch {
+            terminalSessionManager.close(SESSION_ID)
+            sessionCommandProfile = profileId
+            terminalSessionManager.open(SESSION_ID, sessionCommandProfile)
         }
     }
 
@@ -74,6 +83,5 @@ class SessionViewModel @Inject constructor(
     companion object {
         private const val SESSION_ID = "demo-session"
         private const val MAX_TERMINAL_EVENTS = 100
-        private const val SESSION_COMMAND_PROFILE = "ai-dev-safe"
     }
 }

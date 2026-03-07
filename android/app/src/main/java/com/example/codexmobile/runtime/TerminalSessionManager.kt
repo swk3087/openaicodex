@@ -4,6 +4,7 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,8 @@ class TerminalSessionManager @Inject constructor(
     private val sessionMutex = Mutex()
     private val sessions = ConcurrentHashMap<String, SessionRuntime>()
     private val sessionLogs = ConcurrentHashMap<String, MutableSharedFlow<TerminalOutputEvent>>()
+    private val blockedExecutableCounts = ConcurrentHashMap<String, Int>()
+    private val suggestionWriteTicker = AtomicInteger(0)
 
     suspend fun open(
         sessionId: String,
@@ -36,24 +39,23 @@ class TerminalSessionManager @Inject constructor(
             return OpenResult.InvalidSessionId
         }
 
-        if (!commandGate.profileExists(profileId)) {
-            return OpenResult.InvalidProfile
+        val workspace = resolveSessionWorkspace(sessionId)
+        if (!workspace.exists()) {
+            workspace.mkdirs()
         }
+
+        val resolvedProfileId = resolveSessionProfile(profileId, workspace)
+            ?: return OpenResult.InvalidProfile
 
         val existing = sessions[sessionId]
         if (existing != null && !existing.closed) {
             return OpenResult.AlreadyOpen
         }
 
-        val workspace = resolveSessionWorkspace(sessionId)
-        if (!workspace.exists()) {
-            workspace.mkdirs()
-        }
-
         sessions[sessionId] = SessionRuntime(
             sessionId = sessionId,
             workspace = workspace,
-            commandProfileId = profileId,
+            commandProfileId = resolvedProfileId,
             logs = sessionLogs.getOrPut(sessionId) {
                 MutableSharedFlow(extraBufferCapacity = OUTPUT_BUFFER_SIZE)
             }
@@ -131,6 +133,32 @@ class TerminalSessionManager @Inject constructor(
         return target.canonicalFile
     }
 
+    private fun resolveSessionProfile(profileId: String, workspace: File): String? {
+        if (commandGate.profileExists(profileId)) {
+            return profileId
+        }
+
+        if (!commandGate.isExtendedProfileId(profileId)) {
+            return null
+        }
+
+        val projectId = profileId.substringAfter(':', "session")
+        val additionalExecutables = readExtendedProfileCommands(workspace)
+        return commandGate.registerExtendedProfile(projectId, additionalExecutables)
+    }
+
+    private fun readExtendedProfileCommands(workspace: File): Set<String> {
+        val configFile = File(workspace, EXTENDED_PROFILE_COMMANDS_FILE)
+        if (!configFile.exists()) {
+            return emptySet()
+        }
+
+        return configFile.readLines()
+            .map { it.trim() }
+            .filter { line -> line.isNotEmpty() && !line.startsWith("#") }
+            .toSet()
+    }
+
     private suspend fun runCommand(runtime: SessionRuntime, command: String) {
         try {
             val process = ProcessBuilder("sh", "-c", command)
@@ -202,6 +230,30 @@ class TerminalSessionManager @Inject constructor(
             val logFile = File(context.filesDir, COMMAND_FAILURE_LOG_FILE)
             logFile.parentFile?.mkdirs()
             logFile.appendText("$serialized\n")
+            if (entry.reason == "COMMAND_NOT_ALLOWED") {
+                val executable = entry.command.trim().substringBefore(' ').trim()
+                if (executable.isNotEmpty()) {
+                    persistAllowlistSuggestion(executable)
+                }
+            }
+        }
+    }
+
+    private fun persistAllowlistSuggestion(executable: String) {
+        blockedExecutableCounts.merge(executable, 1, Int::plus)
+        val shouldFlush = suggestionWriteTicker.incrementAndGet() % SUGGESTION_FLUSH_INTERVAL == 0
+        if (!shouldFlush) {
+            return
+        }
+
+        val payload = blockedExecutableCounts.entries
+            .sortedByDescending { it.value }
+            .joinToString(separator = "\n") { "${it.key},${it.value}" }
+
+        runCatching {
+            val suggestionFile = File(context.filesDir, ALLOWLIST_SUGGESTION_FILE)
+            suggestionFile.parentFile?.mkdirs()
+            suggestionFile.writeText(payload)
         }
     }
 
@@ -265,5 +317,8 @@ class TerminalSessionManager @Inject constructor(
         val SESSION_ID_REGEX = Regex("^[a-zA-Z0-9_-]{1,64}$")
         const val OUTPUT_BUFFER_SIZE = 128
         const val COMMAND_FAILURE_LOG_FILE = "command-failure-log.jsonl"
+        const val ALLOWLIST_SUGGESTION_FILE = "allowlist-suggestions.csv"
+        const val EXTENDED_PROFILE_COMMANDS_FILE = "extended-allowlist.txt"
+        const val SUGGESTION_FLUSH_INTERVAL = 10
     }
 }
