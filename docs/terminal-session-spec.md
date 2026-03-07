@@ -97,6 +97,68 @@ const COMMAND_ALLOWLIST = {
 - `realpath` 기준으로 `files/sessions/{sessionId}/workspace` 경로 이탈 여부 확인.
 - 경로 순회(`..`) 또는 심볼릭 링크 탈출 탐지 시 세션 차단(`blocked`).
 
+## 파일 접근 게이트웨이(`FileGateway`)
+
+세션 워크스페이스 파일 접근은 직접 파일 API 호출 대신 `FileGateway` 인터페이스를 통해서만 수행한다.
+이는 Android URI 권한, 트리 범위 검증, I/O 감사 로그를 단일 지점에서 일관되게 적용하기 위함이다.
+
+```ts
+interface FileGateway {
+  grantTree(treeUri: string): Promise<void>;
+  list(path: string): Promise<FileEntry[]>;
+  read(path: string): Promise<Uint8Array>;
+  write(path: string, data: Uint8Array): Promise<void>;
+  stat(path: string): Promise<FileStat>;
+}
+```
+
+### 메서드 역할
+- `grantTree()`: 세션 루트 트리 URI 권한 확보 및 내부 캐시 갱신.
+- `list()`: 디렉터리 엔트리 열람(권한 범위 밖 경로는 즉시 거부).
+- `read()`: 파일 바이트 읽기(사전 `stat` 검증과 감사 이벤트 기록 포함).
+- `write()`: 파일 쓰기(원자적 쓰기 권장: temp 파일 -> rename).
+- `stat()`: 파일 타입/크기/mtime 조회.
+
+### Android Persistable URI 권한 정책
+- `grantTree()` 구현 시 `takePersistableUriPermission`을 반드시 호출해 앱 재시작 후에도 접근 권한을 유지한다.
+- 앱 시작 시 persisted permission 목록과 실제 접근 가능 여부를 대조한다.
+- 권한 만료/철회가 감지되면 아래 복구 루틴을 수행한다.
+  1. 해당 트리 접근을 잠시 차단하고 세션 상태를 `blocked`로 전환.
+  2. 재승인 UI를 노출해 사용자가 동일 트리를 다시 선택하도록 유도.
+  3. 재승인 성공 시 `grantTree()` 재호출 후 보류 작업 재시도.
+  4. 실패 시 명시적 오류 코드(`E_TREE_PERMISSION_EXPIRED`)를 상위 계층에 반환.
+
+## diff 적용 파이프라인
+
+파일 변경(diff) 적용은 아래 고정 순서로만 진행한다.
+
+1. **패치 검증**
+   - diff 포맷/헤더/허용 경로/파일 타입을 점검한다.
+   - 적용 대상 파일의 존재 여부와 기본 전제(해시/사이즈)를 확인한다.
+2. **충돌 탐지**
+   - 대상 파일의 현재 상태와 patch base를 비교해 충돌 여부를 계산한다.
+   - 충돌 발생 시 자동 적용을 중단하고 충돌 리포트를 생성한다.
+3. **사용자 승인**
+   - 변경 파일 목록, 충돌 여부, 위험 플래그(권한/삭제/대량 수정)를 UI에 표시한다.
+   - 명시적 승인 이벤트 없이는 실제 쓰기를 수행하지 않는다.
+4. **적용 + 롤백 포인트 기록**
+   - 승인 후 patch를 적용하고, 적용 전 스냅샷(또는 역패치)을 롤백 포인트로 저장한다.
+   - 적용 실패 시 롤백 포인트를 사용해 즉시 원복한다.
+
+## 바이너리/대용량 파일 제외 규칙
+
+diff 적용 대상에서 바이너리 및 대용량 파일을 기본 제외한다.
+
+### 제외 기준(권장)
+- 바이너리 파일: null byte 포함 또는 텍스트 인코딩 판별 실패.
+- 대용량 파일: 단일 파일 `> 5 MiB` 또는 총 변경량 `> 20 MiB`.
+- 생성 산출물/압축 아카이브: `*.apk`, `*.aab`, `*.so`, `*.zip`, `*.tar`, `*.jar`, `*.png`, `*.jpg` 등.
+
+### UI 사전 고지
+- diff 미리보기 단계에서 제외 규칙을 먼저 고지한다.
+- 제외된 파일은 "자동 적용 제외"로 표기하고 이유(바이너리/용량 초과)를 함께 표시한다.
+- 사용자가 제외 항목을 포함하려는 경우, 별도 위험 확인 다이얼로그(2차 확인)를 요구한다.
+
 ## 로그 스트림 ring buffer
 
 ### 요구사항
