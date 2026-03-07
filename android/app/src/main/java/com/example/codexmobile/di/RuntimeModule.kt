@@ -1,5 +1,7 @@
 package com.example.codexmobile.di
 
+import com.example.codexmobile.runtime.FileGateway
+import com.example.codexmobile.runtime.PathFileGateway
 import com.example.codexmobile.runtime.RuntimeManager
 import com.example.codexmobile.runtime.RuntimeManagerImpl
 import dagger.Binds
@@ -14,4 +16,8 @@ abstract class RuntimeModule {
     @Binds
     @Singleton
     abstract fun bindRuntimeManager(runtimeManagerImpl: RuntimeManagerImpl): RuntimeManager
+
+    @Binds
+    @Singleton
+    abstract fun bindFileGateway(pathFileGateway: PathFileGateway): FileGateway
 }

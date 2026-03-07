@@ -10,6 +10,6 @@ data class SessionEntity(
     val selectedModel: String,
     val runtimeVersion: String,
     val state: String,
-    @ColumnInfo(name = "workspaceUri") val workspacePath: String,
+    @ColumnInfo(name = "workspacePath") val workspacePath: String,
     val metadata: String
 )
