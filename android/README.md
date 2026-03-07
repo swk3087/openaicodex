@@ -16,5 +16,5 @@ gradle assembleDebug
 
 ## 다음 단계
 - Gradle Wrapper 추가(`gradle wrapper`) 후 CI 명령을 `./gradlew assembleDebug`로 전환
-- Hilt/WorkManager/SAF 연동
+- Hilt/WorkManager/전체 파일 권한(MANAGE_EXTERNAL_STORAGE) 연동
 - 실제 PTY/ForegroundService 구현
