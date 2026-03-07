@@ -17,9 +17,23 @@ class RoomSessionRepository @Inject constructor(
                 selectedModel = entity.selectedModel,
                 runtimeVersion = entity.runtimeVersion,
                 state = SessionState.valueOf(entity.state),
-                workspaceUri = entity.workspaceUri
+                workspaceUri = entity.workspaceUri,
+                metadata = entity.metadata
             )
         }
+    }
+
+    override suspend fun upsert(session: Session) {
+        sessionDao.upsert(
+            SessionEntity(
+                id = session.id,
+                selectedModel = session.selectedModel,
+                runtimeVersion = session.runtimeVersion,
+                state = session.state.name,
+                workspaceUri = session.workspaceUri,
+                metadata = session.metadata
+            )
+        )
     }
 
     override suspend fun updateModel(sessionId: String, model: String) {
@@ -28,5 +42,13 @@ class RoomSessionRepository @Inject constructor(
 
     override suspend fun updateState(sessionId: String, state: SessionState) {
         sessionDao.updateState(sessionId, state.name)
+    }
+
+    override suspend fun updateRuntimeVersion(sessionId: String, runtimeVersion: String) {
+        sessionDao.updateRuntimeVersion(sessionId, runtimeVersion)
+    }
+
+    override suspend fun updateMetadata(sessionId: String, metadata: String) {
+        sessionDao.updateMetadata(sessionId, metadata)
     }
 }
