@@ -1,10 +1,13 @@
 package com.example.codexmobile.runtime
 
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class CommandGate @Inject constructor() {
+    private val commandProfiles = ConcurrentHashMap(DEFAULT_COMMAND_PROFILES)
+
     fun isAllowed(command: String, profileId: String = DEFAULT_PROFILE): Boolean =
         validate(command, profileId) is CommandGateResult.Allowed
 
@@ -21,7 +24,7 @@ class CommandGate @Inject constructor() {
             return CommandGateResult.Blocked("DENYLIST_BLOCKED")
         }
 
-        val profile = COMMAND_PROFILES[profileId] ?: return CommandGateResult.Blocked("UNKNOWN_PROFILE")
+        val profile = commandProfiles[profileId] ?: return CommandGateResult.Blocked("UNKNOWN_PROFILE")
         val executable = normalized.substringBefore(' ').trim()
         if (executable.isEmpty()) {
             return CommandGateResult.Blocked("EMPTY_COMMAND")
@@ -34,9 +37,29 @@ class CommandGate @Inject constructor() {
         }
     }
 
-    fun profileExists(profileId: String): Boolean = COMMAND_PROFILES.containsKey(profileId)
+    fun profileExists(profileId: String): Boolean = commandProfiles.containsKey(profileId)
 
-    fun listProfiles(): Set<String> = COMMAND_PROFILES.keys
+    fun listProfiles(): Set<String> = commandProfiles.keys
+
+    fun registerProfile(profile: CommandProfile) {
+        commandProfiles[profile.id] = profile
+    }
+
+    fun isExtendedProfileId(profileId: String): Boolean =
+        profileId == EXTENDED_PROFILE_PREFIX || profileId.startsWith("$EXTENDED_PROFILE_PREFIX:")
+
+    fun registerExtendedProfile(projectId: String, additionalExecutables: Set<String>): String {
+        val normalizedProjectId = projectId.trim()
+        require(normalizedProjectId.isNotEmpty()) { "projectId cannot be empty" }
+        val profileId = "$EXTENDED_PROFILE_PREFIX:$normalizedProjectId"
+        registerProfile(
+            CommandProfile(
+                id = profileId,
+                allowedExecutables = SAFE_BASE_COMMANDS + additionalExecutables
+            )
+        )
+        return profileId
+    }
 
     data class CommandProfile(
         val id: String,
@@ -59,7 +82,7 @@ class CommandGate @Inject constructor() {
             "ls"
         )
 
-        private val COMMAND_PROFILES = mapOf(
+        private val DEFAULT_COMMAND_PROFILES = mapOf(
             DEFAULT_PROFILE to CommandProfile(
                 id = DEFAULT_PROFILE,
                 allowedExecutables = SAFE_BASE_COMMANDS
@@ -74,6 +97,8 @@ class CommandGate @Inject constructor() {
                 )
             )
         )
+
+        const val EXTENDED_PROFILE_PREFIX = "ai-dev-extended"
 
         private val DENYLIST_REGEX = listOf(
             Regex("(^|\\s)rm\\s+-rf\\s+/(\\s|$)"),

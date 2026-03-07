@@ -8,6 +8,8 @@
 - Room 기반 세션/패치 엔티티 초안
 - 프로파일 기반 allowlist + 강제 denylist `CommandGate`
 - 세션별 명령 프로파일 선택 및 실패 로그 수집
+- `ai-dev-extended:<project-id>` 프로파일 + 세션 workspace `extended-allowlist.txt` 기반 프로젝트별 명령 확장
+- 차단된 명령 통계(`allowlist-suggestions.csv`)를 주기적으로 기록해 allowlist 업데이트 근거 축적
 
 ## 빌드
 ```bash
