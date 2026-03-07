@@ -28,9 +28,16 @@ class TerminalSessionManager @Inject constructor(
     private val sessions = ConcurrentHashMap<String, SessionRuntime>()
     private val sessionLogs = ConcurrentHashMap<String, MutableSharedFlow<TerminalOutputEvent>>()
 
-    suspend fun open(sessionId: String): OpenResult = sessionMutex.withLock {
+    suspend fun open(
+        sessionId: String,
+        profileId: String = CommandGate.DEFAULT_PROFILE
+    ): OpenResult = sessionMutex.withLock {
         if (!SESSION_ID_REGEX.matches(sessionId)) {
             return OpenResult.InvalidSessionId
+        }
+
+        if (!commandGate.profileExists(profileId)) {
+            return OpenResult.InvalidProfile
         }
 
         val existing = sessions[sessionId]
@@ -46,6 +53,7 @@ class TerminalSessionManager @Inject constructor(
         sessions[sessionId] = SessionRuntime(
             sessionId = sessionId,
             workspace = workspace,
+            commandProfileId = profileId,
             logs = sessionLogs.getOrPut(sessionId) {
                 MutableSharedFlow(extraBufferCapacity = OUTPUT_BUFFER_SIZE)
             }
@@ -66,9 +74,17 @@ class TerminalSessionManager @Inject constructor(
             )
         }
 
-        val gateResult = commandGate.validate(command)
+        val gateResult = commandGate.validate(command, runtime.commandProfileId)
         if (gateResult is CommandGateResult.Blocked) {
             runtime.emitSystem("blocked: ${gateResult.reason}")
+            appendCommandFailureLog(
+                CommandFailureLog(
+                    sessionId = sessionId,
+                    profileId = runtime.commandProfileId,
+                    command = command,
+                    reason = gateResult.reason
+                )
+            )
             return ExecuteResult(accepted = false, blockedReason = gateResult.reason)
         }
 
@@ -138,16 +154,71 @@ class TerminalSessionManager @Inject constructor(
 
             val code = process.waitFor()
             runtime.emitSystem("exit code: $code")
+            if (code != 0) {
+                appendCommandFailureLog(
+                    CommandFailureLog(
+                        sessionId = runtime.sessionId,
+                        profileId = runtime.commandProfileId,
+                        command = command,
+                        reason = "EXIT_CODE_NON_ZERO",
+                        exitCode = code
+                    )
+                )
+            }
         } catch (throwable: Throwable) {
             runtime.emitSystem("execution failed: ${throwable.message}")
+            appendCommandFailureLog(
+                CommandFailureLog(
+                    sessionId = runtime.sessionId,
+                    profileId = runtime.commandProfileId,
+                    command = command,
+                    reason = "EXECUTION_EXCEPTION",
+                    exceptionMessage = throwable.message
+                )
+            )
         } finally {
             runtime.runningProcess = null
         }
     }
 
+    private fun appendCommandFailureLog(entry: CommandFailureLog) {
+        val escapedCommand = entry.command.replace("\\", "\\\\").replace("\"", "\\\"")
+        val escapedReason = entry.reason.replace("\\", "\\\\").replace("\"", "\\\"")
+        val escapedException = entry.exceptionMessage
+            ?.replace("\\", "\\\\")
+            ?.replace("\"", "\\\"")
+            ?: ""
+        val serialized = buildString {
+            append("{\"timestampMs\":${entry.timestampMs}")
+            append(",\"sessionId\":\"${entry.sessionId}\"")
+            append(",\"profileId\":\"${entry.profileId}\"")
+            append(",\"command\":\"$escapedCommand\"")
+            append(",\"reason\":\"$escapedReason\"")
+            append(",\"exitCode\":${entry.exitCode ?: "null"}")
+            append(",\"exceptionMessage\":\"$escapedException\"}")
+        }
+
+        runCatching {
+            val logFile = File(context.filesDir, COMMAND_FAILURE_LOG_FILE)
+            logFile.parentFile?.mkdirs()
+            logFile.appendText("$serialized\n")
+        }
+    }
+
+    private data class CommandFailureLog(
+        val sessionId: String,
+        val profileId: String,
+        val command: String,
+        val reason: String,
+        val exitCode: Int? = null,
+        val exceptionMessage: String? = null,
+        val timestampMs: Long = System.currentTimeMillis()
+    )
+
     private data class SessionRuntime(
         val sessionId: String,
         val workspace: File,
+        val commandProfileId: String,
         val logs: MutableSharedFlow<TerminalOutputEvent>,
         var runningProcess: Process? = null,
         var closed: Boolean = false
@@ -169,6 +240,7 @@ class TerminalSessionManager @Inject constructor(
         data class Opened(val workspacePath: String) : OpenResult
         data object AlreadyOpen : OpenResult
         data object InvalidSessionId : OpenResult
+        data object InvalidProfile : OpenResult
     }
 
     data class ExecuteResult(
@@ -192,5 +264,6 @@ class TerminalSessionManager @Inject constructor(
     private companion object {
         val SESSION_ID_REGEX = Regex("^[a-zA-Z0-9_-]{1,64}$")
         const val OUTPUT_BUFFER_SIZE = 128
+        const val COMMAND_FAILURE_LOG_FILE = "command-failure-log.jsonl"
     }
 }
