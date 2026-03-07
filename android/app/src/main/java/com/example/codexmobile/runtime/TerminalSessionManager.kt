@@ -108,8 +108,12 @@ class TerminalSessionManager @Inject constructor(
         sessions.clear()
     }
 
-    private fun resolveSessionWorkspace(sessionId: String): File =
-        File(context.filesDir, "sessions/$sessionId/workspace")
+    private fun resolveSessionWorkspace(sessionId: String): File {
+        val root = StoragePermissionManager.workspaceRoot(context)
+        val target = File(root, "sessions/$sessionId")
+        PathAccessGuard.assertInsideWorkspace(root, target, "sessions/$sessionId")
+        return target.canonicalFile
+    }
 
     private suspend fun runCommand(runtime: SessionRuntime, command: String) {
         try {

@@ -10,10 +10,8 @@ import kotlinx.coroutines.withContext
 
 @Singleton
 class PathFileGateway @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext private val context: Context
 ) : FileGateway {
-    private val rootDir: File = context.filesDir
-
     override suspend fun list(path: String): List<FileGateway.FileEntry> = withContext(Dispatchers.IO) {
         val directory = resolve(path)
         if (!directory.exists()) {
@@ -27,7 +25,7 @@ class PathFileGateway @Inject constructor(
                 .map { child ->
                     FileGateway.FileEntry(
                         name = child.name,
-                        path = child.relativeTo(rootDir).invariantSeparatorsPath,
+                        path = child.relativeTo(rootDir()).invariantSeparatorsPath,
                         isDirectory = child.isDirectory,
                         sizeBytes = child.length()
                     )
@@ -48,13 +46,22 @@ class PathFileGateway @Inject constructor(
         target.writeBytes(data)
     }
 
-    private fun resolve(path: String): File {
-        val relativePath = path.removePrefix("/")
-        val target = File(rootDir, relativePath)
-        val canonicalTarget = target.canonicalFile
-        require(canonicalTarget.path.startsWith(rootDir.canonicalPath + File.separator) || canonicalTarget == rootDir.canonicalFile) {
-            "PATH_OUT_OF_SCOPE: $path"
-        }
-        return canonicalTarget
+    override suspend fun delete(path: String) = withContext(Dispatchers.IO) {
+        PathAccessGuard.assertDeleteAllowed(path)
+        val target = resolve(path)
+        require(target.exists()) { "FILE_NOT_FOUND: $path" }
+        target.deleteRecursively()
     }
+
+    private fun resolve(path: String): File {
+        val sanitizedPath = path.trim()
+        PathAccessGuard.assertNotSystemPath(sanitizedPath)
+        val relativePath = sanitizedPath.removePrefix("/")
+        val rootDir = rootDir()
+        val target = File(rootDir, relativePath)
+        PathAccessGuard.assertInsideWorkspace(rootDir, target, path)
+        return target.canonicalFile
+    }
+
+    private fun rootDir(): File = StoragePermissionManager.workspaceRoot(context)
 }
