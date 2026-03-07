@@ -388,3 +388,42 @@ it('deletes child rows when a session is deleted', async () => {
 - `sendInput`이 활성 프로세스에만 전달되는지.
 - ring buffer가 용량 초과 시 메모리 증가 없이 덮어쓰기 동작하는지.
 - `closeSession` 시 프로세스/핸들이 누수 없이 정리되는지.
+
+## 표준 테스트 계획
+
+아래 항목은 CI 고정 검증(단위/통합)과 릴리스 게이트(내구성)로 운영한다.
+
+### 단위 테스트
+- **명령 allowlist 파서**
+  - 허용 executable + 허용 인자 조합은 `accepted=true`가 되는지 검증.
+  - 메타문자(`;`, `&&`, `|`, `` ` ``, `$()`, `>`, `<`) 포함 입력이 파싱 단계에서 즉시 차단되는지 검증.
+  - allowlist 외 executable, 인자 정규식 위반, 인자 개수 초과/부족을 각각 독립 케이스로 검증.
+- **세션 상태머신 전이**
+  - `openSession -> idle`, `idle --execute(allowed)--> running`, `running --processExit--> idle`, `running --closeSession--> closed` 전이를 검증.
+  - `idle --execute(blocked)--> blocked` 이후 재실행 금지 정책이 유지되는지 검증.
+  - 비허용 전이(예: `closed` 상태의 `execute`)가 명시적 오류를 반환하는지 검증.
+- **diff 충돌 판정**
+  - base 해시 일치 + 문맥 일치 시 `no-conflict`로 판정되는지 검증.
+  - 같은 hunk 라인이 외부 변경된 경우 `conflict`로 판정되는지 검증.
+  - 파일 이동/삭제/권한 변경 등 경계 케이스에서 충돌 리포트 필드(`file`, `hunk`, `reason`)가 채워지는지 검증.
+
+### 통합 테스트
+- **세션 생성 → 명령 실행 → diff 생성 → 적용 → 롤백**
+  - 단일 시나리오에서 `openSession`, `execute`, patch 생성, 사용자 승인 적용, 실패 시 롤백 포인트 원복까지 end-to-end 검증.
+  - 적용 후/롤백 후 파일 해시를 비교해 데이터 일관성을 검증.
+- **권한 회수/재부여 시 파일 접근 복구**
+  - `FileGateway.grantTree()` 후 정상 `read/write` 가능한 상태를 확인.
+  - 권한 회수 이벤트 주입 시 세션이 `blocked`로 전이되고 `E_TREE_PERMISSION_EXPIRED`가 반환되는지 검증.
+  - 동일 트리 재승인 후 보류 작업 재시도 시 접근이 복구되는지 검증.
+
+### 내구성 테스트
+- **1시간 이상 연속 명령 실행**
+  - 주기적 명령 실행(예: 1~5초 간격)으로 최소 1시간 유지하며 메모리/핸들/프로세스 누수 지표를 수집.
+  - 테스트 종료 시 ring buffer 상한 준수와 평균/최대 응답시간 열화를 검증.
+- **앱 백그라운드/포그라운드 반복 전환**
+  - 전환 이벤트를 반복 주입해 세션 상태/로그 스트림/실행 중 프로세스 복원성을 검증.
+  - 전환 중 명령 요청 경합 시 중복 실행, 유실, 데드락이 없는지 확인.
+
+### 실패 재현 템플릿 표준
+- 모든 테스트 실패 이슈는 `docs/test-failure-template.md`를 사용해 재현 정보를 기록한다.
+- CI 실패/수동 테스트 실패 모두 동일 템플릿을 사용해 원인 분석 입력 품질을 맞춘다.
