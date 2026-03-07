@@ -128,6 +128,72 @@ interface FileGateway {
   3. 재승인 성공 시 `grantTree()` 재호출 후 보류 작업 재시도.
   4. 실패 시 명시적 오류 코드(`E_TREE_PERMISSION_EXPIRED`)를 상위 계층에 반환.
 
+## 세션 화면 정보 구조(IA)
+
+세션 상세 화면은 아래 탭을 고정 제공한다.
+
+- `Terminal`: 명령 입력/실행 로그 스트림.
+- `Files`: 세션 워크스페이스 파일 브라우저.
+- `Diffs`: 패치 미리보기/충돌/승인 상태.
+- `Settings`: 세션별 실행 정책(allowlist, CWD, 권한).
+- `Model`: 모델/온도/provider 선택.
+
+### 탭 동작 규칙
+- 탭 전환은 실행 중 프로세스를 중단하지 않는다.
+- `Diffs` 탭에 승인 대기 패치가 있으면 배지로 개수를 노출한다.
+- `Settings`, `Model` 탭에서 실행 중 변경 불가 항목은 disabled + 이유 툴팁을 제공한다.
+
+## 파괴적 액션(Destructive Action) 안전장치
+
+세션 삭제, 대량 패치 적용 같은 파괴적 액션에는 확인 다이얼로그와 되돌리기(undo)를 모두 제공해야 한다.
+
+### 적용 대상
+- 세션 삭제(`deleteSession`)
+- 대량 패치 일괄 적용(`applyAllPatches`, 변경 파일 수/라인 수 임계치 초과)
+
+### 확인 다이얼로그 필수 항목
+1. 액션 요약(삭제 세션 ID, 적용 파일 수/라인 수)
+2. 영향 범위(삭제될 엔티티/덮어쓸 파일)
+3. 복구 가능 시간(예: 30초)
+4. 최종 확인 버튼(위험 강조 스타일)
+
+### 되돌리기 정책
+- 액션 직전 스냅샷 또는 역연산 토큰을 생성한다.
+- 사용자에게 `Undo` CTA를 토스트/스낵바로 노출한다.
+- `Undo` 가능 시간 내 요청 시 원복 후 이벤트 타임라인에 `undo_success`를 기록한다.
+- 시간 초과 또는 원복 실패 시 `undo_expired`/`undo_failed` 이벤트를 기록한다.
+
+## 사용자 액션 이벤트 타임라인
+
+사용자 액션 로그를 세션 화면 하단(bottom sheet 또는 고정 footer 영역) 이벤트 타임라인으로 노출한다.
+
+### 타임라인 이벤트 스키마(예시)
+
+```ts
+interface SessionUiEvent {
+  id: string;
+  sessionId: string;
+  type:
+    | 'session_opened'
+    | 'command_executed'
+    | 'patch_apply_requested'
+    | 'patch_apply_confirmed'
+    | 'session_delete_requested'
+    | 'session_delete_confirmed'
+    | 'undo_success'
+    | 'undo_failed'
+    | 'undo_expired';
+  actor: 'user' | 'system';
+  createdAt: string;
+  metadata?: Record<string, string | number | boolean>;
+}
+```
+
+### 노출/보존 규칙
+- 최신 이벤트가 하단에서 즉시 append되도록 실시간 반영한다.
+- 기본 노출 개수는 최근 200건, 추가 조회는 페이지네이션으로 제공한다.
+- 보안/감사 용도로 원본 이벤트는 별도 저장소에 30일 이상 보관을 권장한다.
+
 ## diff 적용 파이프라인
 
 파일 변경(diff) 적용은 아래 고정 순서로만 진행한다.
