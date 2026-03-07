@@ -10,3 +10,7 @@ for android
 ## Android 코드
 - `android/`: 세션 중심 아키텍처 스캐폴드 앱
 - `.github/workflows/android-apk.yml`: GitHub Actions APK 빌드 워크플로우
+
+## CI 안정화 참고
+- Android 리소스 링크 오류 방지를 위해 Material 의존성을 포함했습니다.
+- CI는 `:app:processDebugResources`와 `:app:assembleDebug`를 함께 실행하도록 구성했습니다.
