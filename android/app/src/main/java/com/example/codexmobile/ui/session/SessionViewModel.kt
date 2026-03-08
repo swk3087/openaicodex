@@ -94,7 +94,7 @@ class SessionViewModel @Inject constructor(
             ensureDefaultSessionExists()
             val session = sessionRepository.getSession(SESSION_ID)
             val profile = session?.metadata.toProfileOrDefault()
-            terminalSessionManager.openSession(SESSION_ID, DEFAULT_WORKSPACE_PATH, profile)
+            terminalSessionManager.open(SESSION_ID, DEFAULT_WORKSPACE_PATH, profile)
         }
     }
 
