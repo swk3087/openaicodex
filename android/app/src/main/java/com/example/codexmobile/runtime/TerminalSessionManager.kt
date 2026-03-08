@@ -20,13 +20,17 @@ import kotlinx.coroutines.withContext
 class TerminalSessionManager @Inject constructor(
     private val commandGate: CommandGate
 ) {
-    private val sessions = ConcurrentHashMap<String, File>()
+    private val sessions = ConcurrentHashMap<String, SessionConfig>()
     private val activeProcesses = ConcurrentHashMap<String, Process>()
     private val eventStreams = ConcurrentHashMap<String, MutableSharedFlow<TerminalOutputEvent>>()
 
-    fun openSession(sessionId: String, workingDir: String) {
+    fun openSession(
+        sessionId: String,
+        workingDir: String,
+        profile: CommandGate.Profile = CommandGate.Profile.SAFE
+    ) {
         val dir = File(workingDir)
-        sessions[sessionId] = dir
+        sessions[sessionId] = SessionConfig(dir, profile)
         eventStreams.putIfAbsent(
             sessionId,
             MutableSharedFlow(extraBufferCapacity = EVENT_BUFFER_CAPACITY)
@@ -34,20 +38,20 @@ class TerminalSessionManager @Inject constructor(
     }
 
     fun execute(sessionId: String, command: String): Flow<TerminalOutputEvent> = flow {
-        if (!commandGate.isAllowed(command)) {
-            emit(TerminalOutputEvent.Stderr("Command rejected by gate: $command"))
-            emit(TerminalOutputEvent.Exit(REJECTED_COMMAND_EXIT_CODE))
-            return@flow
-        }
-
-        val workingDir = sessions[sessionId]
-        if (workingDir == null) {
+        val sessionConfig = sessions[sessionId]
+        if (sessionConfig == null) {
             emit(TerminalOutputEvent.Stderr("Session not opened: $sessionId"))
             emit(TerminalOutputEvent.Exit(MISSING_SESSION_EXIT_CODE))
             return@flow
         }
 
-        executeProcess(sessionId, command, workingDir).collect { event ->
+        if (!commandGate.isAllowed(command, sessionConfig.profile)) {
+            emit(TerminalOutputEvent.Stderr("Command rejected by gate: $command"))
+            emit(TerminalOutputEvent.Exit(REJECTED_COMMAND_EXIT_CODE))
+            return@flow
+        }
+
+        executeProcess(sessionId, command, sessionConfig.workingDir).collect { event ->
             emit(event)
             eventStreams[sessionId]?.tryEmit(event)
         }
@@ -93,6 +97,12 @@ class TerminalSessionManager @Inject constructor(
             trySend(TerminalOutputEvent.Exit(exitCode))
         }
     }
+
+
+    private data class SessionConfig(
+        val workingDir: File,
+        val profile: CommandGate.Profile
+    )
 
     companion object {
         private const val EVENT_BUFFER_CAPACITY = 128

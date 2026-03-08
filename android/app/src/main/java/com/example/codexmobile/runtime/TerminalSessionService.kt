@@ -37,10 +37,16 @@ class TerminalSessionService : Service() {
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val command = intent.getStringExtra(EXTRA_COMMAND).orEmpty()
         val workingDir = intent.getStringExtra(EXTRA_WORKING_DIR).orEmpty()
+        val profileName = intent.getStringExtra(EXTRA_PROFILE)
 
         serviceScope.launch {
             when (action) {
-                ACTION_OPEN -> terminalSessionManager.openSession(sessionId, workingDir)
+                ACTION_OPEN -> {
+                    val profile = profileName
+                        ?.let { runCatching { CommandGate.Profile.valueOf(it) }.getOrNull() }
+                        ?: CommandGate.Profile.SAFE
+                    terminalSessionManager.openSession(sessionId, workingDir, profile)
+                }
                 ACTION_EXECUTE -> terminalSessionManager.execute(sessionId, command).collect()
                 ACTION_CLOSE -> {
                     terminalSessionManager.closeSession(sessionId)
@@ -88,6 +94,7 @@ class TerminalSessionService : Service() {
         const val EXTRA_SESSION_ID = "extra_session_id"
         const val EXTRA_COMMAND = "extra_command"
         const val EXTRA_WORKING_DIR = "extra_working_dir"
+        const val EXTRA_PROFILE = "extra_profile"
 
         private const val CHANNEL_ID = "terminal_session"
         private const val NOTIFICATION_ID = 1101
