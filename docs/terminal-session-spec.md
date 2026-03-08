@@ -100,33 +100,25 @@ const COMMAND_ALLOWLIST = {
 ## 파일 접근 게이트웨이(`FileGateway`)
 
 세션 워크스페이스 파일 접근은 직접 파일 API 호출 대신 `FileGateway` 인터페이스를 통해서만 수행한다.
-이는 Android URI 권한, 트리 범위 검증, I/O 감사 로그를 단일 지점에서 일관되게 적용하기 위함이다.
+`FileGateway`는 **경로(path) 기반 중립 인터페이스**를 유지하며, URI/권한 저장 같은 플랫폼 전용 로직은 포함하지 않는다.
 
 ```ts
 interface FileGateway {
-  grantTree(treeUri: string): Promise<void>;
   list(path: string): Promise<FileEntry[]>;
   read(path: string): Promise<Uint8Array>;
   write(path: string, data: Uint8Array): Promise<void>;
-  stat(path: string): Promise<FileStat>;
 }
 ```
 
 ### 메서드 역할
-- `grantTree()`: 세션 루트 트리 URI 권한 확보 및 내부 캐시 갱신.
-- `list()`: 디렉터리 엔트리 열람(권한 범위 밖 경로는 즉시 거부).
-- `read()`: 파일 바이트 읽기(사전 `stat` 검증과 감사 이벤트 기록 포함).
-- `write()`: 파일 쓰기(원자적 쓰기 권장: temp 파일 -> rename).
-- `stat()`: 파일 타입/크기/mtime 조회.
+- `list(path)`: 디렉터리 엔트리 열람(세션 루트 범위 밖 경로는 즉시 거부).
+- `read(path)`: 파일 바이트 읽기(감사 이벤트 기록 포함).
+- `write(path, data)`: 파일 쓰기(원자적 쓰기 권장: temp 파일 -> rename).
 
-### Android Persistable URI 권한 정책
-- `grantTree()` 구현 시 `takePersistableUriPermission`을 반드시 호출해 앱 재시작 후에도 접근 권한을 유지한다.
-- 앱 시작 시 persisted permission 목록과 실제 접근 가능 여부를 대조한다.
-- 권한 만료/철회가 감지되면 아래 복구 루틴을 수행한다.
-  1. 해당 트리 접근을 잠시 차단하고 세션 상태를 `blocked`로 전환.
-  2. 재승인 UI를 노출해 사용자가 동일 트리를 다시 선택하도록 유도.
-  3. 재승인 성공 시 `grantTree()` 재호출 후 보류 작업 재시도.
-  4. 실패 시 명시적 오류 코드(`E_TREE_PERMISSION_EXPIRED`)를 상위 계층에 반환.
+### SAF 레거시 격리 원칙
+- `Uri`, `DocumentFile`, persistable permission(`takePersistableUriPermission`) 기반 구현은 기본 경로에서 사용하지 않는다.
+- 필요 시 별도 `LegacySafFileGateway`로 분리하고, 기본 DI 바인딩은 path 기반 구현(`PathFileGateway`)만 사용한다.
+- 세션/패치 계층 데이터 모델은 URI가 아닌 문자열 경로(`workspacePath`, `filePath`)만 저장한다.
 
 ## 세션 화면 정보 구조(IA)
 
@@ -411,10 +403,10 @@ it('deletes child rows when a session is deleted', async () => {
 - **세션 생성 → 명령 실행 → diff 생성 → 적용 → 롤백**
   - 단일 시나리오에서 `openSession`, `execute`, patch 생성, 사용자 승인 적용, 실패 시 롤백 포인트 원복까지 end-to-end 검증.
   - 적용 후/롤백 후 파일 해시를 비교해 데이터 일관성을 검증.
-- **권한 회수/재부여 시 파일 접근 복구**
-  - `FileGateway.grantTree()` 후 정상 `read/write` 가능한 상태를 확인.
-  - 권한 회수 이벤트 주입 시 세션이 `blocked`로 전이되고 `E_TREE_PERMISSION_EXPIRED`가 반환되는지 검증.
-  - 동일 트리 재승인 후 보류 작업 재시도 시 접근이 복구되는지 검증.
+- **경로 범위 검증/복구 시나리오**
+  - `FileGateway`가 세션 루트 경로 밖 접근(`../`, 심볼릭 링크 탈출)을 일관되게 차단하는지 검증.
+  - 차단 이벤트 발생 시 세션이 `blocked`로 전이되고 명시적 에러 코드가 반환되는지 검증.
+  - 정상 경로 재시도 시 `read/write` 접근이 복구되는지 검증.
 
 ### 내구성 테스트
 - **1시간 이상 연속 명령 실행**
