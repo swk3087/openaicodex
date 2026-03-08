@@ -2,9 +2,7 @@ package com.example.codexmobile.ui.session
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.codexmobile.domain.Session
 import com.example.codexmobile.domain.SessionRepository
-import com.example.codexmobile.domain.SessionState
 import com.example.codexmobile.runtime.CommandGate
 import com.example.codexmobile.runtime.TerminalSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -73,26 +71,13 @@ class SessionViewModel @Inject constructor(
     }
 
     private suspend fun ensureDefaultSessionExists() {
-        if (sessionRepository.getSession(SESSION_ID) != null) return
-
-        sessionRepository.upsert(
-            Session(
-                id = SESSION_ID,
-                selectedModel = DEFAULT_MODEL,
-                runtimeVersion = DEFAULT_RUNTIME_VERSION,
-                state = SessionState.IDLE,
-                workspacePath = DEFAULT_WORKSPACE_PATH,
-                metadata = DEFAULT_METADATA
-            )
-        )
+        sessionRepository.createIfAbsent(SESSION_ID, DEFAULT_MODEL, DEFAULT_WORKSPACE_PATH)
     }
 
     companion object {
         private const val SESSION_ID = "demo-session"
         private const val DEFAULT_MODEL = "gpt-5.2-codex"
-        private const val DEFAULT_RUNTIME_VERSION = "-"
         private const val DEFAULT_WORKSPACE_PATH = "/workspace"
-        private const val DEFAULT_METADATA = "runtimeErrorCode="
         private const val MAX_TERMINAL_LOGS = 100
     }
 }
