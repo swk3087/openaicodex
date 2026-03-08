@@ -3,7 +3,7 @@ package com.example.codexmobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.codexmobile.domain.SessionRepository
-import com.example.codexmobile.runtime.CommandGate
+import com.example.codexmobile.runtime.TerminalOutputEvent
 import com.example.codexmobile.runtime.TerminalSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -46,7 +46,7 @@ class SessionViewModel @Inject constructor(
                 },
             terminalSessionManager.stream(SESSION_ID)
                 .runningFold(emptyList()) { logs, event ->
-                    (logs + "[${event.type}] ${event.content}").takeLast(MAX_TERMINAL_LOGS)
+                    (logs + event.toDisplayLog()).takeLast(MAX_TERMINAL_LOGS)
                 }
                 .onStart { emit(emptyList()) },
             errorMessage
@@ -66,12 +66,18 @@ class SessionViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             ensureDefaultSessionExists()
-            terminalSessionManager.open(SESSION_ID, CommandGate.DEFAULT_PROFILE)
+            terminalSessionManager.openSession(SESSION_ID, DEFAULT_WORKSPACE_PATH)
         }
     }
 
     private suspend fun ensureDefaultSessionExists() {
         sessionRepository.createIfAbsent(SESSION_ID, DEFAULT_MODEL, DEFAULT_WORKSPACE_PATH)
+    }
+
+    private fun TerminalOutputEvent.toDisplayLog(): String = when (this) {
+        is TerminalOutputEvent.Stdout -> "[stdout] $text"
+        is TerminalOutputEvent.Stderr -> "[stderr] $text"
+        is TerminalOutputEvent.Exit -> "[exit] $code"
     }
 
     companion object {
