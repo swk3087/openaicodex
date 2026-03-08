@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [SessionEntity::class, PatchEntity::class],
-    version = 3,
+    version = 1,
     exportSchema = false
 )
 abstract class CodexDatabase : RoomDatabase() {

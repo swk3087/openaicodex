@@ -1,6 +1,5 @@
 package com.example.codexmobile.data
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -10,6 +9,5 @@ data class SessionEntity(
     val selectedModel: String,
     val runtimeVersion: String,
     val state: String,
-    @ColumnInfo(name = "workspacePath") val workspacePath: String,
-    val metadata: String
+    val workspaceUri: String
 )

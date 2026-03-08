@@ -5,6 +5,5 @@ data class Session(
     val selectedModel: String,
     val runtimeVersion: String,
     val state: SessionState,
-    val workspacePath: String,
-    val metadata: String
+    val workspaceUri: String
 )

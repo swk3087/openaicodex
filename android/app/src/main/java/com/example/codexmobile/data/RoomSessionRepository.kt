@@ -5,9 +5,8 @@ import com.example.codexmobile.domain.SessionRepository
 import com.example.codexmobile.domain.SessionState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
 
-class RoomSessionRepository @Inject constructor(
+class RoomSessionRepository(
     private val sessionDao: SessionDao
 ) : SessionRepository {
     override fun observeSession(sessionId: String): Flow<Session> {
@@ -17,23 +16,9 @@ class RoomSessionRepository @Inject constructor(
                 selectedModel = entity.selectedModel,
                 runtimeVersion = entity.runtimeVersion,
                 state = SessionState.valueOf(entity.state),
-                workspacePath = entity.workspacePath,
-                metadata = entity.metadata
+                workspaceUri = entity.workspaceUri
             )
         }
-    }
-
-    override suspend fun upsert(session: Session) {
-        sessionDao.upsert(
-            SessionEntity(
-                id = session.id,
-                selectedModel = session.selectedModel,
-                runtimeVersion = session.runtimeVersion,
-                state = session.state.name,
-                workspacePath = session.workspacePath,
-                metadata = session.metadata
-            )
-        )
     }
 
     override suspend fun updateModel(sessionId: String, model: String) {
@@ -42,13 +27,5 @@ class RoomSessionRepository @Inject constructor(
 
     override suspend fun updateState(sessionId: String, state: SessionState) {
         sessionDao.updateState(sessionId, state.name)
-    }
-
-    override suspend fun updateRuntimeVersion(sessionId: String, runtimeVersion: String) {
-        sessionDao.updateRuntimeVersion(sessionId, runtimeVersion)
-    }
-
-    override suspend fun updateMetadata(sessionId: String, metadata: String) {
-        sessionDao.updateMetadata(sessionId, metadata)
     }
 }

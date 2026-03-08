@@ -6,22 +6,20 @@
 - Compose 기반 `MainActivity`
 - Session/Runtime 도메인 타입
 - Room 기반 세션/패치 엔티티 초안
-- 프로파일 기반 allowlist + 강제 denylist `CommandGate`
-- 세션별 명령 프로파일 선택 및 실패 로그 수집
-- `ai-dev-extended:<project-id>` 프로파일 + 세션 workspace `extended-allowlist.txt` 기반 프로젝트별 명령 확장
-- 차단된 명령 통계(`allowlist-suggestions.csv`)를 주기적으로 기록해 allowlist 업데이트 근거 축적
+- 명령 allowlist 기반 `CommandGate`
 
 ## 빌드
 ```bash
 cd android
-gradle assembleDebug
+gradle --no-daemon :app:processDebugResources :app:assembleDebug
 ```
+
+## 트러블슈팅
+- `Theme.Material3.DayNight.NoActionBar not found`가 나오면 `app/build.gradle.kts`에
+  `com.google.android.material:material` 의존성이 포함됐는지 확인하세요.
+- 네트워크 제한 환경에서 Maven Central `403`이 발생하면, 사내 미러/프록시 설정을 먼저 점검하세요.
 
 ## 다음 단계
 - Gradle Wrapper 추가(`gradle wrapper`) 후 CI 명령을 `./gradlew assembleDebug`로 전환
-- Hilt/WorkManager/전체 파일 권한(MANAGE_EXTERNAL_STORAGE) 연동
+- Hilt/WorkManager/파일 접근 모듈 연동
 - 실제 PTY/ForegroundService 구현
-
-
-## 저장소 정책
-- 배포 채널별 저장소 권한 정책은 `android/docs/storage-deployment-policy.md`를 참고하세요.
