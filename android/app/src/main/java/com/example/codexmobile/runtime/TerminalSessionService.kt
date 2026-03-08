@@ -45,11 +45,11 @@ class TerminalSessionService : Service() {
                     val profile = profileName
                         ?.let { runCatching { CommandGate.Profile.valueOf(it) }.getOrNull() }
                         ?: CommandGate.Profile.SAFE
-                    terminalSessionManager.openSession(sessionId, workingDir, profile)
+                    terminalSessionManager.open(sessionId, workingDir, profile)
                 }
                 ACTION_EXECUTE -> terminalSessionManager.execute(sessionId, command).collect()
                 ACTION_CLOSE -> {
-                    terminalSessionManager.closeSession(sessionId)
+                    terminalSessionManager.close(sessionId)
                     stopSelf()
                 }
             }

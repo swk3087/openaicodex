@@ -24,7 +24,7 @@ class TerminalSessionManager @Inject constructor(
     private val activeProcesses = ConcurrentHashMap<String, Process>()
     private val eventStreams = ConcurrentHashMap<String, MutableSharedFlow<TerminalOutputEvent>>()
 
-    fun openSession(
+    fun open(
         sessionId: String,
         workingDir: String,
         profile: CommandGate.Profile = CommandGate.Profile.SAFE
@@ -57,7 +57,7 @@ class TerminalSessionManager @Inject constructor(
         }
     }
 
-    fun closeSession(sessionId: String) {
+    fun close(sessionId: String) {
         activeProcesses.remove(sessionId)?.destroy()
         sessions.remove(sessionId)
         eventStreams.remove(sessionId)
