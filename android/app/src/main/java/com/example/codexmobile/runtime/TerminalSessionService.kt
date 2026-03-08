@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -35,15 +36,14 @@ class TerminalSessionService : Service() {
         val action = intent?.action ?: return START_STICKY
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val command = intent.getStringExtra(EXTRA_COMMAND).orEmpty()
-        val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
-            ?: CommandGate.DEFAULT_PROFILE
+        val workingDir = intent.getStringExtra(EXTRA_WORKING_DIR).orEmpty()
 
         serviceScope.launch {
             when (action) {
-                ACTION_OPEN -> terminalSessionManager.open(sessionId, profileId)
-                ACTION_EXECUTE -> terminalSessionManager.execute(sessionId, command)
+                ACTION_OPEN -> terminalSessionManager.openSession(sessionId, workingDir)
+                ACTION_EXECUTE -> terminalSessionManager.execute(sessionId, command).collect()
                 ACTION_CLOSE -> {
-                    terminalSessionManager.close(sessionId)
+                    terminalSessionManager.closeSession(sessionId)
                     stopSelf()
                 }
             }
@@ -87,7 +87,7 @@ class TerminalSessionService : Service() {
 
         const val EXTRA_SESSION_ID = "extra_session_id"
         const val EXTRA_COMMAND = "extra_command"
-        const val EXTRA_PROFILE_ID = "extra_profile_id"
+        const val EXTRA_WORKING_DIR = "extra_working_dir"
 
         private const val CHANNEL_ID = "terminal_session"
         private const val NOTIFICATION_ID = 1101
