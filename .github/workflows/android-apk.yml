@@ -1,0 +1,40 @@
+name: Android APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-apk.yml'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Normalize Android scaffold sources
+        run: ./scripts/normalize_android_scaffold.sh
+
+      - name: Build Android resources and APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace :app:processDebugResources :app:assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-mobile-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk

@@ -1,0 +1,10 @@
+# Normalize text files across platforms
+* text=auto eol=lf
+
+# Prefer automatic union merges for scaffold/text-heavy Android and CI files
+*.md merge=union
+*.yml merge=union
+*.yaml merge=union
+*.kts merge=union
+*.kt merge=union
+*.xml merge=union
