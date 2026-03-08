@@ -18,6 +18,15 @@ class RoomSessionRepository @Inject constructor(
         return sessionDao.findById(sessionId)?.toDomain()
     }
 
+    override suspend fun createIfAbsent(sessionId: String, model: String, workspaceUri: String) {
+        sessionDao.createIfAbsent(
+            sessionId = sessionId,
+            model = model,
+            workspaceUri = workspaceUri,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
     override suspend fun upsert(session: Session) {
         sessionDao.upsert(
             SessionEntity(
@@ -26,7 +35,10 @@ class RoomSessionRepository @Inject constructor(
                 runtimeVersion = session.runtimeVersion,
                 state = session.state.name,
                 workspacePath = session.workspacePath,
-                metadata = session.metadata
+                metadata = session.metadata,
+                lastErrorCode = session.lastErrorCode,
+                lastErrorMessage = session.lastErrorMessage,
+                updatedAt = session.updatedAt
             )
         )
     }
@@ -39,8 +51,12 @@ class RoomSessionRepository @Inject constructor(
         sessionDao.updateState(sessionId, state.name)
     }
 
-    override suspend fun updateRuntimeVersion(sessionId: String, runtimeVersion: String) {
-        sessionDao.updateRuntimeVersion(sessionId, runtimeVersion)
+    override suspend fun updateRuntimeVersion(sessionId: String, runtime: String) {
+        sessionDao.updateRuntimeVersion(sessionId, runtime, System.currentTimeMillis())
+    }
+
+    override suspend fun updateError(sessionId: String, code: String?, message: String?) {
+        sessionDao.updateError(sessionId, code, message, System.currentTimeMillis())
     }
 
     override suspend fun updateMetadata(sessionId: String, metadata: String) {
@@ -54,7 +70,10 @@ class RoomSessionRepository @Inject constructor(
             runtimeVersion = runtimeVersion,
             state = SessionState.valueOf(state),
             workspacePath = workspacePath,
-            metadata = metadata
+            metadata = metadata,
+            lastErrorCode = lastErrorCode,
+            lastErrorMessage = lastErrorMessage,
+            updatedAt = updatedAt
         )
     }
 }

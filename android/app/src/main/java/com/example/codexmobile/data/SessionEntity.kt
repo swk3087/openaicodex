@@ -10,5 +10,8 @@ data class SessionEntity(
     val runtimeVersion: String,
     val state: String,
     val workspacePath: String,
-    val metadata: String
+    val metadata: String,
+    val lastErrorCode: String?,
+    val lastErrorMessage: String?,
+    val updatedAt: Long
 )
