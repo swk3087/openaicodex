@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.runningFold
@@ -26,6 +27,11 @@ class SessionViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val errorMessage = MutableStateFlow<String?>(null)
+    private val commandInput = MutableStateFlow("")
+    private val isRunningCommand = MutableStateFlow(false)
+    private val lastExitCode = MutableStateFlow<Int?>(null)
+    private val status = MutableStateFlow(SessionExecutionStatus.READY)
+    private val snackbarMessage = MutableStateFlow<String?>(null)
 
     val state: StateFlow<SessionViewState> =
         combine(
@@ -50,13 +56,32 @@ class SessionViewModel @Inject constructor(
                     (logs + event.toDisplayLog()).takeLast(MAX_TERMINAL_LOGS)
                 }
                 .onStart { emit(emptyList()) },
-            errorMessage
-        ) { session, terminalLogs, error ->
+            errorMessage,
+            commandInput,
+            isRunningCommand,
+            lastExitCode,
+            status,
+            snackbarMessage
+        ) { values ->
+            val session = values[0] as SessionSummary?
+            val terminalLogs = values[1] as List<String>
+            val error = values[2] as String?
+            val input = values[3] as String
+            val running = values[4] as Boolean
+            val exitCode = values[5] as Int?
+            val executionStatus = values[6] as SessionExecutionStatus
+            val snackbar = values[7] as String?
+
             SessionViewState(
                 isLoading = session == null && error == null,
                 session = session,
                 errorMessage = error,
-                terminalLogs = terminalLogs
+                terminalLogs = terminalLogs,
+                commandInput = input,
+                isRunningCommand = running,
+                lastExitCode = exitCode,
+                status = executionStatus,
+                snackbarMessage = snackbar
             )
         }.stateIn(
             scope = viewModelScope,
@@ -73,10 +98,45 @@ class SessionViewModel @Inject constructor(
         }
     }
 
+    fun updateCommandInput(command: String) {
+        commandInput.value = command
+    }
+
+    fun runCommand(command: String = commandInput.value) {
+        if (isRunningCommand.value) return
+        if (command.isBlank()) {
+            snackbarMessage.value = "Please enter a command"
+            return
+        }
+
+        viewModelScope.launch {
+            isRunningCommand.value = true
+            status.value = SessionExecutionStatus.RUNNING
+            lastExitCode.value = null
+            snackbarMessage.value = null
+
+            terminalSessionManager.execute(SESSION_ID, command).collect { event ->
+                if (event is TerminalOutputEvent.Exit) {
+                    lastExitCode.value = event.code
+                    isRunningCommand.value = false
+                    if (event.code == 0) {
+                        status.value = SessionExecutionStatus.READY
+                    } else {
+                        status.value = SessionExecutionStatus.FAILED
+                        snackbarMessage.value = "Command failed (exit code: ${event.code})"
+                    }
+                }
+            }
+        }
+    }
+
+    fun consumeSnackbarMessage() {
+        snackbarMessage.value = null
+    }
+
     private suspend fun ensureDefaultSessionExists() {
         sessionRepository.createIfAbsent(SESSION_ID, DEFAULT_MODEL, DEFAULT_WORKSPACE_PATH)
     }
-
 
     private fun String?.toProfileOrDefault(): CommandGate.Profile {
         val metadata = this?.trim().orEmpty()
