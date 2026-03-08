@@ -3,6 +3,7 @@ package com.example.codexmobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.codexmobile.domain.SessionRepository
+import com.example.codexmobile.runtime.CommandGate
 import com.example.codexmobile.runtime.TerminalOutputEvent
 import com.example.codexmobile.runtime.TerminalSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -66,12 +67,37 @@ class SessionViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             ensureDefaultSessionExists()
-            terminalSessionManager.openSession(SESSION_ID, DEFAULT_WORKSPACE_PATH)
+            val session = sessionRepository.getSession(SESSION_ID)
+            val profile = session?.metadata.toProfileOrDefault()
+            terminalSessionManager.openSession(SESSION_ID, DEFAULT_WORKSPACE_PATH, profile)
         }
     }
 
     private suspend fun ensureDefaultSessionExists() {
         sessionRepository.createIfAbsent(SESSION_ID, DEFAULT_MODEL, DEFAULT_WORKSPACE_PATH)
+    }
+
+
+    private fun String?.toProfileOrDefault(): CommandGate.Profile {
+        val metadata = this?.trim().orEmpty()
+        if (metadata.isEmpty()) {
+            return CommandGate.Profile.SAFE
+        }
+
+        val directProfile = runCatching { CommandGate.Profile.valueOf(metadata) }.getOrNull()
+        if (directProfile != null) {
+            return directProfile
+        }
+
+        val profileEntry = metadata
+            .split(",")
+            .map { it.trim() }
+            .firstOrNull { entry -> entry.startsWith("profile=", ignoreCase = true) }
+            ?.substringAfter('=')
+            ?.trim()
+            .orEmpty()
+
+        return runCatching { CommandGate.Profile.valueOf(profileEntry.uppercase()) }.getOrDefault(CommandGate.Profile.SAFE)
     }
 
     private fun TerminalOutputEvent.toDisplayLog(): String = when (this) {
