@@ -26,6 +26,9 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Normalize Android scaffold sources
+        run: ./scripts/normalize_android_scaffold.sh
+
       - name: Build Android resources and APK
         working-directory: android
         run: gradle --no-daemon --stacktrace :app:processDebugResources :app:assembleDebug
